@@ -1,0 +1,2 @@
+# requirements.txt
+# (Laissez-le vide ou avec les dépendances si vous en avez)
