@@ -1,10 +1,9 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 import json, time, os, uuid, mimetypes
-import tempfile
 
 HOST = "0.0.0.0"
-PORT = PORT = int(os.environ.get("PORT", 8080))
+PORT = int(os.environ.get("PORT", 8080))
 
 # Data files and directories
 DATA_DIR = "."
@@ -55,7 +54,6 @@ for file_path in [SESSIONS_FILE, MESSAGES_FILE, FILES_META_FILE]:
         save_json(file_path, [] if file_path == MESSAGES_FILE else {})
 
 # Flexible users loader (JSON or plain text user:pass per line)
-
 def parse_users_plain(text: str):
     data = {}
     for line in text.splitlines():
@@ -77,7 +75,6 @@ def parse_users_plain(text: str):
         if user:
             data[user] = pwd
     return data
-
 
 def load_users_file(path: str):
     try:
@@ -112,6 +109,7 @@ try:
             save_json(USERS_FILE, data)
 except Exception as e:
     print("Users migration failed:", e)
+
 # Load on startup
 users = load_users_file(USERS_FILE)
 sessions = load_json(SESSIONS_FILE, {})
@@ -127,16 +125,16 @@ if ADMIN_USER not in users:
 def page_template(title, body):
     return f"""
     <!DOCTYPE html>
-    <html lang=\"fr\">
+    <html lang="fr">
     <head>
-        <meta charset=\"UTF-8\">
-        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> 
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1"> 
         <title>{title}</title>
-        <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">
-        <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>
-        <link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap\" rel=\"stylesheet\">
-        <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css\">
-        <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css\">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
         <style>
             :root {{
                 --bg-1: #0f2027;
@@ -237,8 +235,8 @@ def page_template(title, body):
         </style>
     </head>
     <body>
-        <div class=\"app-shell\">
-            <div class=\"container\">
+        <div class="app-shell">
+            <div class="container">
                 {body}
             </div>
         </div>
@@ -246,105 +244,102 @@ def page_template(title, body):
     </html>
     """
 
-
 def page_login(error_message=None):
     return page_template("Connexion", f"""
-    <div class=\"row justify-content-center\">
-        <div class=\"col-12 col-sm-10 col-md-7 col-lg-5\">
-            <div class=\"glass-card p-4 p-md-5\">
-                <div class=\"text-center mb-3\">
-                    <div class=\"display-6\">🔐</div>
-                    <h2 class=\"brand-title mt-2\">Connexion</h2>
-                    <p class=\"muted mb-0\">Accédez à votre discussion en toute simplicité</p>
+    <div class="row justify-content-center">
+        <div class="col-12 col-sm-10 col-md-7 col-lg-5">
+            <div class="glass-card p-4 p-md-5">
+                <div class="text-center mb-3">
+                    <div class="display-6">🔐</div>
+                    <h2 class="brand-title mt-2">Connexion</h2>
+                    <p class="muted mb-0">Accédez à votre discussion en toute simplicité</p>
                 </div>
-                {f'<div class=\"alert alert-danger py-2 px-3 small mb-2\">{error_message}</div>' if error_message else ''}
-                <form method=\"POST\" action=\"/login\" class=\"mt-3\">
-                    <div class=\"mb-3\">
-                        <label class=\"form-label\">Nom d'utilisateur</label>
-                        <input class=\"form-control form-control-lg\" name=\"username\" placeholder=\"Nom d'utilisateur\" autocomplete=\"username\">
+                {f'<div class="alert alert-danger py-2 px-3 small mb-2">{error_message}</div>' if error_message else ''}
+                <form method="POST" action="/login" class="mt-3">
+                    <div class="mb-3">
+                        <label class="form-label">Nom d'utilisateur</label>
+                        <input class="form-control form-control-lg" name="username" placeholder="Nom d'utilisateur" autocomplete="username">
                     </div>
-                    <div class=\"mb-3\">
-                        <label class=\"form-label\">Mot de passe</label>
-                        <input class=\"form-control form-control-lg\" type=\"password\" name=\"password\" placeholder=\"Mot de passe\" autocomplete=\"current-password\">
+                    <div class="mb-3">
+                        <label class="form-label">Mot de passe</label>
+                        <input class="form-control form-control-lg" type="password" name="password" placeholder="Mot de passe" autocomplete="current-password">
                     </div>
-                    <button class=\"btn btn-primary btn-lg w-100\" type=\"submit\">Se connecter</button>
+                    <button class="btn btn-primary btn-lg w-100" type="submit">Se connecter</button>
                 </form>
-                <div class=\"text-center mt-3\">
-                    <a href=\"/register\" class=\"btn btn-outline-light w-100\">Créer un compte</a>
+                <div class="text-center mt-3">
+                    <a href="/register" class="btn btn-outline-light w-100">Créer un compte</a>
                 </div>
             </div>
         </div>
     </div>
     """)
-
 
 def page_register():
     return page_template("Inscription", """
-    <div class=\"row justify-content-center\">
-        <div class=\"col-12 col-sm-10 col-md-7 col-lg-5\">
-            <div class=\"glass-card p-4 p-md-5\">
-                <div class=\"text-center mb-3\">
-                    <div class=\"display-6\">📝</div>
-                    <h2 class=\"brand-title mt-2\">Créer un compte</h2>
-                    <p class=\"muted mb-0\">Rejoignez la discussion en quelques secondes</p>
+    <div class="row justify-content-center">
+        <div class="col-12 col-sm-10 col-md-7 col-lg-5">
+            <div class="glass-card p-4 p-md-5">
+                <div class="text-center mb-3">
+                    <div class="display-6">📝</div>
+                    <h2 class="brand-title mt-2">Créer un compte</h2>
+                    <p class="muted mb-0">Rejoignez la discussion en quelques secondes</p>
                 </div>
-                <form method=\"POST\" action=\"/register\" class=\"mt-4\">
-                    <div class=\"mb-3\">
-                        <label class=\"form-label\">Nom d'utilisateur</label>
-                        <input class=\"form-control form-control-lg\" name=\"username\" placeholder=\"Nom d'utilisateur\" autocomplete=\"username\">
+                <form method="POST" action="/register" class="mt-4">
+                    <div class="mb-3">
+                        <label class="form-label">Nom d'utilisateur</label>
+                        <input class="form-control form-control-lg" name="username" placeholder="Nom d'utilisateur" autocomplete="username">
                     </div>
-                    <div class=\"mb-3\">
-                        <label class=\"form-label\">Mot de passe</label>
-                        <input class=\"form-control form-control-lg\" type=\"password\" name=\"password\" placeholder=\"Mot de passe\" autocomplete=\"new-password\">
+                    <div class="mb-3">
+                        <label class="form-label">Mot de passe</label>
+                        <input class="form-control form-control-lg" type="password" name="password" placeholder="Mot de passe" autocomplete="new-password">
                     </div>
-                    <button class=\"btn btn-success btn-lg w-100\" type=\"submit\">Créer un compte</button>
+                    <button class="btn btn-success btn-lg w-100" type="submit">Créer un compte</button>
                 </form>
-                <div class=\"text-center mt-3\">
-                    <a href=\"/login\" class=\"btn btn-outline-light w-100\">Déjà inscrit ? Se connecter</a>
+                <div class="text-center mt-3">
+                    <a href="/login" class="btn btn-outline-light w-100">Déjà inscrit ? Se connecter</a>
                 </div>
             </div>
         </div>
     </div>
     """)
 
-
 def page_discussion(username):
     return page_template("Discussion", f"""
-    <div class=\"row\">
-        <div class=\"col-12\">
-            <div class=\"d-flex justify-content-between align-items-center mb-3\">
-                <div class=\"d-flex align-items-center gap-2\">
-                    <span class=\"fs-3\">💬</span>
-                    <h3 class=\"brand-title mb-0\">Discussion</h3>
-                    <span class=\"badge bg-light text-dark ms-2\"><i class=\"bi bi-person-circle\"></i> {username}</span>
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fs-3">💬</span>
+                    <h3 class="brand-title mb-0">Discussion</h3>
+                    <span class="badge bg-light text-dark ms-2"><i class="bi bi-person-circle"></i> {username}</span>
                 </div>
-                <div class=\"d-flex gap-2\">
-                    <a class=\"btn btn-outline-light\" href=\"/export\" title=\"Exporter les messages\"><i class=\"bi bi-download\"></i> Exporter</a>
-                    <form method=\"POST\" action=\"/logout\" class=\"m-0\">
-                        <button class=\"btn btn-outline-light\" title=\"Déconnexion\"><i class=\"bi bi-box-arrow-right\"></i> Déconnexion</button>
+                <div class="d-flex gap-2">
+                    <a class="btn btn-outline-light" href="/export" title="Exporter les messages"><i class="bi bi-download"></i> Exporter</a>
+                    <form method="POST" action="/logout" class="m-0">
+                        <button class="btn btn-outline-light" title="Déconnexion"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
                     </form>
                 </div>
             </div>
         </div>
-        <div class=\"col-12 col-lg-8\">
-            <div class=\"glass-card chat-wrapper p-3 p-md-4 mb-3 mb-lg-0\">
-                <div id=\"chat-list\" class=\"card-elevated mb-3\">
-                    <ul id=\"messages\" class=\"list-unstyled m-0\"></ul>
+        <div class="col-12 col-lg-8">
+            <div class="glass-card chat-wrapper p-3 p-md-4 mb-3 mb-lg-0">
+                <div id="chat-list" class="card-elevated mb-3">
+                    <ul id="messages" class="list-unstyled m-0"></ul>
                 </div>
-                <div class=\"input-group\">
-                    <input id=\"message-input\" class=\"form-control form-control-lg\" placeholder=\"Écris ton message et appuie sur Entrée…\">
-                    <button id=\"send-btn\" class=\"btn btn-primary btn-lg\"><i class=\"bi bi-send\"></i> Envoyer</button>
+                <div class="input-group">
+                    <input id="message-input" class="form-control form-control-lg" placeholder="Écris ton message et appuie sur Entrée…">
+                    <button id="send-btn" class="btn btn-primary btn-lg"><i class="bi bi-send"></i> Envoyer</button>
                 </div>
             </div>
         </div>
-        <div class=\"col-12 col-lg-4\">
-            <div class=\"glass-card p-3 p-md-4\">
-                <h5 class=\"brand-title mb-3\">📁 Fichiers partagés</h5>
-                <div class=\"mb-3\">
-                    <input type=\"file\" id=\"file-input\" class=\"form-control\">
-                    <button id=\"upload-btn\" class=\"btn btn-primary w-100 mt-2\"><i class=\"bi bi-upload\"></i> Uploader</button>
+        <div class="col-12 col-lg-4">
+            <div class="glass-card p-3 p-md-4">
+                <h5 class="brand-title mb-3">📁 Fichiers partagés</h5>
+                <div class="mb-3">
+                    <input type="file" id="file-input" class="form-control">
+                    <button id="upload-btn" class="btn btn-primary w-100 mt-2"><i class="bi bi-upload"></i> Uploader</button>
                 </div>
-                <div id=\"files-list\"></div>
+                <div id="files-list"></div>
             </div>
         </div>
     </div>
@@ -495,42 +490,40 @@ def page_discussion(username):
     </script>
     """)
 
-
 def page_admin():
     return page_template("Admin", """
-    <div class=\"row justify-content-center\">
-        <div class=\"col-12 col-lg-8\">
-            <div class=\"glass-card p-4 p-md-5\">
-                <div class=\"d-flex align-items-center justify-content-between mb-3\">
-                    <div class=\"d-flex align-items-center gap-2\">
-                        <span class=\"fs-3\">🛠️</span>
-                        <h3 class=\"brand-title mb-0\">Panneau Admin</h3>
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <div class="glass-card p-4 p-md-5">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fs-3">🛠️</span>
+                        <h3 class="brand-title mb-0">Panneau Admin</h3>
                     </div>
-                    <form method=\"POST\" action=\"/logout\">
-                        <button class=\"btn btn-outline-light\"><i class=\"bi bi-box-arrow-right\"></i> Déconnexion</button>
+                    <form method="POST" action="/logout">
+                        <button class="btn btn-outline-light"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
                     </form>
                 </div>
-                <form method=\"POST\" action=\"/ban\" class=\"mt-2\">
-                    <div class=\"row g-3 align-items-end\">
-                        <div class=\"col-12 col-md-6\">
-                            <label class=\"form-label\">Utilisateur à bannir</label>
-                            <input class=\"form-control form-control-lg\" name=\"username\" placeholder=\"Nom d'utilisateur\">
+                <form method="POST" action="/ban" class="mt-2">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Utilisateur à bannir</label>
+                            <input class="form-control form-control-lg" name="username" placeholder="Nom d'utilisateur">
                         </div>
-                        <div class=\"col-6 col-md-3\">
-                            <label class=\"form-label\">Durée (min)</label>
-                            <input class=\"form-control form-control-lg\" type=\"number\" min=\"1\" name=\"minutes\" placeholder=\"10\">
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">Durée (min)</label>
+                            <input class="form-control form-control-lg" type="number" min="1" name="minutes" placeholder="10">
                         </div>
-                        <div class=\"col-6 col-md-3\">
-                            <button class=\"btn btn-warning btn-lg w-100\" type=\"submit\"><i class=\"bi bi-slash-circle\"></i> Bannir</button>
+                        <div class="col-6 col-md-3">
+                            <button class="btn btn-warning btn-lg w-100" type="submit"><i class="bi bi-slash-circle"></i> Bannir</button>
                         </div>
                     </div>
-                    <p class=\"muted mt-3 mb-0\">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
+                    <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
                 </form>
             </div>
         </div>
     </div>
     """)
-
 
 # --- Utilitaires ---
 def is_authenticated(headers):
@@ -546,13 +539,11 @@ def is_authenticated(headers):
             return sessions.get(token)
     return None
 
-
 def make_session(username):
     token = uuid.uuid4().hex
     sessions[token] = username
     save_json(SESSIONS_FILE, sessions)
     return token
-
 
 # --- Serveur principal ---
 class SimpleChatServer(BaseHTTPRequestHandler):
@@ -592,13 +583,13 @@ class SimpleChatServer(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             # Expose only safe metadata
-            out = [{{
+            out = [{
                 "id": f.get("id"),
                 "owner": f.get("owner"),
                 "filename": f.get("filename"),
                 "size": f.get("size", 0),
                 "uploaded_at": f.get("uploaded_at")
-            }} for f in files_meta]
+            } for f in files_meta]
             self.wfile.write(json.dumps(out).encode())
         elif path == "/download":
             fid = query.get("fid", [None])[0]
@@ -647,7 +638,7 @@ class SimpleChatServer(BaseHTTPRequestHandler):
         ctype = self.headers.get('Content-Type')
         if ctype and 'multipart/form-data' in ctype:
             params = {}
-            length = None  # cgi.FieldStorage lit le flux lui-même
+            length = None
         else:
             length = int(self.headers.get("Content-Length", 0) or 0)
             raw = self.rfile.read(length) if length else b''
@@ -702,142 +693,78 @@ class SimpleChatServer(BaseHTTPRequestHandler):
             self.end_headers()
         elif path == "/upload" and username:
             ctype = self.headers.get('Content-Type')
-    if not ctype or 'multipart/form-data' not in ctype:
-        self.send_error(400, "Bad Request")
-        return
-    
-    try:
-        # Lire la longueur du contenu
-        content_length = int(self.headers.get('Content-Length', 0))
-        if content_length == 0:
-            self.send_error(400, "No content")
-            return
-        
-        # Lire toutes les données
-        data = self.rfile.read(content_length)
-        
-        # Extraire le nom du fichier (méthode simplifiée)
-        lines = data.split(b'\r\n')
-        filename = None
-        
-        # Chercher la ligne avec le filename
-        for line in lines:
-            if b'filename=' in line:
-                # Extraire le nom de fichier
-                filename_part = line.split(b'filename="')[1]
-                filename = filename_part.split(b'"')[0].decode()
-                break
-        
-        if not filename:
-            self.send_error(400, "No filename found")
-            return
-        
-        # Trouver le début des données du fichier
-        file_data_start = None
-        for i, line in enumerate(lines):
-            if line == b'' and i + 1 < len(lines):
-                file_data_start = i + 1
-                break
-        
-        if file_data_start is None:
-            self.send_error(400, "No file data found")
-            return
-        
-        # Extraire les données du fichier (tout jusqu'à l'avant-dernière ligne)
-        file_data = b'\r\n'.join(lines[file_data_start:-2])
-        
-        # Continuer avec votre code existant pour sauvegarder le fichier
-        original_name = os.path.basename(filename)
-        fid = uuid.uuid4().hex
-        disk_name = f"{fid}__{original_name}"
-        disk_path = os.path.join(UPLOAD_DIR, disk_name)
-        
-        # Créer le dossier uploads s'il n'existe pas
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        
-        with open(disk_path, 'wb') as out:
-            out.write(file_data)
-        
-        size = os.path.getsize(disk_path)
-        files_meta.append({
-            "id": fid,
-            "owner": username,
-            "filename": original_name,
-            "disk_path": disk_path,
-            "size": size,
-            "uploaded_at": time.time(),
-        })
-        save_json(FILES_META_FILE, files_meta)
-        self.send_response(200)
-        self.end_headers()
-        
-    except Exception as e:
-        print(f"Upload error: {e}")
-        self.send_error(500, "Internal Server Error")
-        return
-        
-        # Trouver le début des données du fichier
-        file_data_start = None
-        for i, line in enumerate(lines):
-            if line == b'' and i + 1 < len(lines):
-                file_data_start = i + 1
-                break
-        
-        if file_data_start is None:
-            self.send_error(400, "No file data found")
-            return
-        
-        # Extraire les données du fichier (tout jusqu'à l'avant-dernière ligne)
-        file_data = b'\r\n'.join(lines[file_data_start:-2])
-        
-        # Continuer avec votre code existant pour sauvegarder le fichier
-        original_name = os.path.basename(filename)
-        fid = uuid.uuid4().hex
-        disk_name = f"{fid}__{original_name}"
-        disk_path = os.path.join(UPLOAD_DIR, disk_name)
-        
-        # Créer le dossier uploads s'il n'existe pas
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        
-        with open(disk_path, 'wb') as out:
-            out.write(file_data)
-        
-        # Le reste de votre code original continue ici...
-        size = os.path.getsize(disk_path)
-        files_meta.append({
-            "id": fid,
-            "owner": username,
-            "filename": original_name,
-            "disk_path": disk_path,
-            "size": size,
-            "uploaded_at": time.time(),
-        })
-        save_json(FILES_META_FILE, files_meta)
-        self.send_response(200)
-        self.end_headers()
-        
-    except Exception as e:
-        print(f"Upload error: {e}")
-        self.send_error(500, "Internal Server Error")
-        return
-            original_name = os.path.basename(fileitem.filename)
-            fid = uuid.uuid4().hex
-            disk_name = f"{fid}__{original_name}"
-            disk_path = os.path.join(UPLOAD_DIR, disk_name)
-            with open(disk_path, 'wb') as out:
-                out.write(fileitem.file.read())
-            size = os.path.getsize(disk_path)
-            files_meta.append({
-                "id": fid,
-                "owner": username,
-                "filename": original_name,
-                "disk_path": disk_path,
-                "size": size,
-                "uploaded_at": time.time(),
-            })
-            save_json(FILES_META_FILE, files_meta)
-            self.send_response(200)
-            self.end_headers()
+            if not ctype or 'multipart/form-data' not in ctype:
+                self.send_error(400, "Bad Request")
+                return
+            
+            try:
+                # Lire la longueur du contenu
+                content_length = int(self.headers.get('Content-Length', 0))
+                if content_length == 0:
+                    self.send_error(400, "No content")
+                    return
+                
+                # Lire toutes les données
+                data = self.rfile.read(content_length)
+                
+                # Extraire le nom du fichier (méthode simplifiée)
+                lines = data.split(b'\r\n')
+                filename = None
+                
+                # Chercher la ligne avec le filename
+                for line in lines:
+                    if b'filename=' in line:
+                        # Extraire le nom de fichier
+                        filename_part = line.split(b'filename="')[1]
+                        filename = filename_part.split(b'"')[0].decode()
+                        break
+                
+                if not filename:
+                    self.send_error(400, "No filename found")
+                    return
+                
+                # Trouver le début des données du fichier
+                file_data_start = None
+                for i, line in enumerate(lines):
+                    if line == b'' and i + 1 < len(lines):
+                        file_data_start = i + 1
+                        break
+                
+                if file_data_start is None:
+                    self.send_error(400, "No file data found")
+                    return
+                
+                # Extraire les données du fichier (tout jusqu'à l'avant-dernière ligne)
+                file_data = b'\r\n'.join(lines[file_data_start:-2])
+                
+                # Sauvegarder le fichier
+                original_name = os.path.basename(filename)
+                fid = uuid.uuid4().hex
+                disk_name = f"{fid}__{original_name}"
+                disk_path = os.path.join(UPLOAD_DIR, disk_name)
+                
+                # Créer le dossier uploads s'il n'existe pas
+                os.makedirs(UPLOAD_DIR, exist_ok=True)
+                
+                with open(disk_path, 'wb') as out:
+                    out.write(file_data)
+                
+                size = os.path.getsize(disk_path)
+                files_meta.append({
+                    "id": fid,
+                    "owner": username,
+                    "filename": original_name,
+                    "disk_path": disk_path,
+                    "size": size,
+                    "uploaded_at": time.time(),
+                })
+                save_json(FILES_META_FILE, files_meta)
+                self.send_response(200)
+                self.end_headers()
+                
+            except Exception as e:
+                print(f"Upload error: {e}")
+                self.send_error(500, "Internal Server Error")
         elif path == "/delete_file" and username:
             fid = params.get("fid", [None])[0]
             meta_idx = next((i for i, f in enumerate(files_meta) if f.get("id") == fid), None)
@@ -871,7 +798,6 @@ class SimpleChatServer(BaseHTTPRequestHandler):
         self.send_response(302)
         self.send_header("Location", url)
         self.end_headers()
-
 
 if __name__ == "__main__":
     print(f"Server running at http://{HOST}:{PORT}/")
