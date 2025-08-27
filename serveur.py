@@ -5,11 +5,22 @@ import json, time, os, uuid, mimetypes
 import datetime
 
 def should_server_run():
-    """Vérifie si le serveur doit tourner (entre 8h et 19h)"""
-    now = datetime.datetime.now()
-    current_hour = now.hour
-    return 7 <= current_hour < 20
-
+    """Vérifie si le serveur doit tourner (entre 8h et 19h heure française)"""
+    try:
+        import pytz
+        utc_zone = pytz.utc
+        france_zone = pytz.timezone('Europe/Paris')
+        utc_now = datetime.datetime.now(utc_zone)
+        france_now = utc_now.astimezone(france_zone)
+        current_hour = france_now.hour
+        return 7 <= current_hour < 22
+    except:
+        # Fallback simple si pytz n'est pas disponible
+        now = datetime.datetime.utcnow()
+        is_summer_time = (3 <= now.month <= 10)
+        hour_offset = 2 if is_summer_time else 1
+        french_hour = (now.hour + hour_offset) % 24
+        return 7 <= french_hour < 22
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8080))
 
@@ -809,7 +820,7 @@ class SimpleChatServer(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     if not should_server_run():
-        print("Server is outside operating hours (8h-19h). Shutting down.")
+        print("Server is outside operating hours (7h-20h). Shutting down.")
         exit(0)
     
     print(f"Server running at http://{HOST}:{PORT}/")
