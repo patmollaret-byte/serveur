@@ -584,88 +584,31 @@ def make_session(username):
 
 # --- Serveur principal ---
 class SimpleChatServer(BaseHTTPRequestHandler):
-    def do_GET(self):
-        username = is_authenticated(self.headers)
-        parsed = urlparse(self.path)
-        path = parsed.path
-        query = parse_qs(parsed.query)
-
-        if path == "/":
-            self.respond(page_login())
-        elif path == "/login":
-            self.respond(page_login())
-        elif path == "/register":
-            self.respond(page_register())
-        elif path == "/discussion":
-            if username:
-                if username in banned_users and time.time() < banned_users[username]:
-                    self.respond(page_template("Banni", "<h3 class='text-center text-danger'>⛔ Vous êtes banni temporairement.</h3>"))
-                else:
-                    self.respond(page_discussion(username))
-            else:
-                self.redirect("/login")
-        elif path == "/admin":
+           elif path == "/admin":
             if username == ADMIN_USER:
                 self.respond(page_admin())
             else:
                 self.redirect("/login")
-        elif path == "/messages":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            # Return all messages (persisted)
-            self.wfile.write(json.dumps(messages).encode())
-        elif path == "/files":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            # Expose only safe metadata
-            out = [{
-                "id": f.get("id"),
-                "owner": f.get("owner"),
-                "filename": f.get("filename"),
-                "size": f.get("size", 0),
-                "uploaded_at": f.get("uploaded_at")
-            } for f in files_meta]
-            self.wfile.write(json.dumps(out).encode())
-        elif path == "/download":
-            fid = query.get("fid", [None])[0]
-            meta = next((f for f in files_meta if f.get("id") == fid), None)
-            if not meta or not os.path.isfile(meta.get("disk_path", "")):
-                self.send_error(404, "File not found")
-                return
-            self.send_response(200)
-            mime, _ = mimetypes.guess_type(meta["filename"]) or ("application/octet-stream", None)
-            self.send_header("Content-Type", mime)
-            self.send_header("Content-Disposition", f"attachment; filename=\"{meta['filename']}\"")
-            self.end_headers()
-            with open(meta["disk_path"], "rb") as f:
-                self.wfile.write(f.read())
-        elif path == "/export":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Disposition", "attachment; filename=messages.json")
-            self.end_headers()
-            self.wfile.write(json.dumps(messages).encode())
-        elif path == "/logout":
-            cookie = self.headers.get("Cookie")
-            if cookie and "session=" in cookie:
-                token = None
-                for part in cookie.split(";"):
-                    part = part.strip()
-                    if part.startswith("session="):
-                        token = part.split("session=")[1]
-                        break
-                if token:
-                    sessions.pop(token, None)
-                    save_json(SESSIONS_FILE, sessions)
-            self.send_response(302)
-            self.send_header("Set-Cookie", "session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
-            self.send_header("Location", "/login")
-            self.end_headers()
-        else:
-            self.send_error(404, "Not found")
-
+        
+        # ⭐ AJOUTER ICI - Confirmation de suppression (optionnel)
+        elif path == "/confirm_delete":
+            if username == ADMIN_USER:
+                self.respond(page_template("Confirmation", f"""
+                    <div class="text-center">
+                        <div class="display-6">⚠️</div>
+                        <h3 class="text-warning mt-2">Confirmer la suppression</h3>
+                        <p>Êtes-vous sûr de vouloir supprimer les {len(messages)} messages ?</p>
+                        <form method="POST" action="/delete_all_messages">
+                            <button class="btn btn-danger btn-lg me-2" type="submit">
+                                <i class="bi bi-trash"></i> Oui, supprimer tout
+                            </button>
+                            <a href="/admin" class="btn btn-secondary btn-lg">Annuler</a>
+                        </form>
+                    </div>
+                """))
+            else:
+                self.redirect("/login")
+        # ⭐ FIN de l'ajout
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
