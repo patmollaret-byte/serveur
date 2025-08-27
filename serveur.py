@@ -758,6 +758,50 @@ class SimpleChatServer(BaseHTTPRequestHandler):
         with open(disk_path, 'wb') as out:
             out.write(file_data)
         
+        size = os.path.getsize(disk_path)
+        files_meta.append({
+            "id": fid,
+            "owner": username,
+            "filename": original_name,
+            "disk_path": disk_path,
+            "size": size,
+            "uploaded_at": time.time(),
+        })
+        save_json(FILES_META_FILE, files_meta)
+        self.send_response(200)
+        self.end_headers()
+        
+    except Exception as e:
+        print(f"Upload error: {e}")
+        self.send_error(500, "Internal Server Error")
+        return
+        
+        # Trouver le début des données du fichier
+        file_data_start = None
+        for i, line in enumerate(lines):
+            if line == b'' and i + 1 < len(lines):
+                file_data_start = i + 1
+                break
+        
+        if file_data_start is None:
+            self.send_error(400, "No file data found")
+            return
+        
+        # Extraire les données du fichier (tout jusqu'à l'avant-dernière ligne)
+        file_data = b'\r\n'.join(lines[file_data_start:-2])
+        
+        # Continuer avec votre code existant pour sauvegarder le fichier
+        original_name = os.path.basename(filename)
+        fid = uuid.uuid4().hex
+        disk_name = f"{fid}__{original_name}"
+        disk_path = os.path.join(UPLOAD_DIR, disk_name)
+        
+        # Créer le dossier uploads s'il n'existe pas
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        
+        with open(disk_path, 'wb') as out:
+            out.write(file_data)
+        
         # Le reste de votre code original continue ici...
         size = os.path.getsize(disk_path)
         files_meta.append({
