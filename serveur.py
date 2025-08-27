@@ -1,27 +1,15 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
-import json, time, os, uuid, mimetypes
-
-import datetime
-
-def should_server_run():
-    """Vérifie si le serveur doit tourner (entre 7h et 20h heure française)"""
-    now = datetime.datetime.utcnow()
-    
-    # Ajustement pour la France :
-    # - Heure d'été (mars à octobre) : UTC+2 → ajouter 2 heures
-    # - Heure d'hiver (octobre à mars) : UTC+1 → ajouter 1 heure
-    
-    # Déterminer si on est en heure d'été (simplifié)
-    is_summer_time = (3 <= now.month <= 10)  # Mars à octobre
-    
-    hour_offset = 2 if is_summer_time else 1
-    french_hour = (now.hour + hour_offset) % 24
-    
-    return 7 <= french_hour < 20  # De 7h à 19h59 heure française
+import json, time, os, uuid, mimetypes, datetime
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8080))
+
+def should_server_run():
+    """Vérifie si le serveur doit tourner (entre 7h et 22h)"""
+    now = datetime.datetime.now()
+    current_hour = now.hour
+    return 7 <= current_hour < 22  # De 7h à 21h59
 
 # Data files and directories
 DATA_DIR = "."
@@ -250,6 +238,39 @@ def page_template(title, body):
                 margin-bottom: 8px;
             }}
             .file-name {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+
+            /* Online users list */
+            .online-users-list {{
+                max-height: 200px;
+                overflow-y: auto;
+            }}
+            .user-online-item {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 12px;
+                margin-bottom: 6px;
+                border-radius: 10px;
+                background: rgba(255,255,255,0.06);
+                border: 1px solid var(--border);
+            }}
+            .user-avatar {{
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, var(--primary), var(--primary-2));
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 600;
+            }}
+            .user-status {{
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: #00ff00;
+                margin-left: auto;
+            }}
         </style>
     </head>
     <body>
@@ -354,10 +375,27 @@ def page_discussion(username):
             <div class="glass-card p-3 p-md-4">
                 <h5 class="brand-title mb-3">📁 Fichiers partagés</h5>
                 <div class="mb-3">
-                    <input type="file" id="file-input" class="form-control">
-                    <button id="upload-btn" class="btn btn-primary w-100 mt-2"><i class="bi bi-upload"></i> Uploader</button>
+                    <form id="upload-form" method="POST" enctype="multipart/form-data">
+                        <input type="file" id="file-input" name="file" class="form-control">
+                        <button type="submit" id="upload-btn" class="btn btn-primary w-100 mt-2">
+                            <i class="bi bi-upload"></i> Uploader
+                        </button>
+                    </form>
                 </div>
                 <div id="files-list"></div>
+                
+                <!-- Liste des utilisateurs en ligne -->
+                <div class="border-top pt-4 mt-4">
+                    <h5 class="brand-title mb-3">👥 Utilisateurs en ligne</h5>
+                    <div id="online-users" class="online-users-list">
+                        <div class="text-center muted">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Chargement...</span>
+                            </div>
+                            Chargement...
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -456,9 +494,42 @@ def page_discussion(username):
     }});
 
     // Files
+    const uploadForm = document.getElementById('upload-form');
     const fileInput = document.getElementById('file-input');
     const uploadBtn = document.getElementById('upload-btn');
     const filesList = document.getElementById('files-list');
+
+    // Upload functionality - FIXED
+    uploadForm.addEventListener('submit', async (e) => {{
+        e.preventDefault();
+        if (!fileInput.files.length) return;
+        
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Upload en cours...';
+        
+        try {{
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            const response = await fetch('/upload', {{
+                method: 'POST',
+                body: formData
+            }});
+            
+            if (response.ok) {{
+                fileInput.value = '';
+                loadFiles();
+            }} else {{
+                alert('Erreur lors de l\\'upload');
+            }}
+        }} catch (error) {{
+            console.error('Upload error:', error);
+            alert('Erreur de connexion');
+        }} finally {{
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = '<i class="bi bi-upload"></i> Uploader';
+        }}
+    }});
 
     async function loadFiles(){{
         try {{
@@ -486,14 +557,29 @@ def page_discussion(username):
         }} catch(e) {{ console.error(e); }}
     }}
 
-    uploadBtn.addEventListener('click', async () => {{
-        if (!fileInput.files.length) return;
-        const fd = new FormData();
-        fd.append('file', fileInput.files[0]);
-        await fetch('/upload', {{ method:'POST', body: fd }});
-        fileInput.value = '';
-        loadFiles();
-    }});
+    // Online users functionality
+    async function loadOnlineUsers(){{
+        try {{
+            const res = await fetch('/online_users', {{ cache: 'no-store' }});
+            const users = await res.json();
+            
+            const onlineUsersList = document.getElementById('online-users');
+            if (users.length === 0) {{
+                onlineUsersList.innerHTML = '<div class="text-center muted">Aucun utilisateur en ligne</div>';
+                return;
+            }}
+            
+            onlineUsersList.innerHTML = users.map(user => `
+                <div class="user-online-item">
+                    <div class="user-avatar">${{user.charAt(0).toUpperCase()}}</div>
+                    <div>${{escapeHtml(user)}}${{user === ADMIN ? ' 👑' : ''}}</div>
+                    <div class="user-status"></div>
+                </div>
+            `).join('');
+        }} catch(e) {{ 
+            console.error('Failed to load online users:', e);
+        }}
+    }}
 
     // Render cached messages instantly if available
     try {{ 
@@ -502,14 +588,16 @@ def page_discussion(username):
     }} catch (e) {{}}
 
     setInterval(loadMessages, 1500);
+    setInterval(loadOnlineUsers, 3000);
     loadMessages();
     updateBtn();
     loadFiles();
+    loadOnlineUsers();
     </script>
     """)
 
 def page_admin():
-    return page_template("Admin", """
+    return page_template("Admin", f"""
     <div class="row justify-content-center">
         <div class="col-12 col-lg-8">
             <div class="glass-card p-4 p-md-5">
@@ -522,7 +610,10 @@ def page_admin():
                         <button class="btn btn-outline-light"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
                     </form>
                 </div>
-                <form method="POST" action="/ban" class="mt-2">
+                
+                <!-- Ban user form -->
+                <form method="POST" action="/ban" class="mt-2 mb-4">
+                    <h5 class="brand-title mb-3">👤 Gestion des utilisateurs</h5>
                     <div class="row g-3 align-items-end">
                         <div class="col-12 col-md-6">
                             <label class="form-label">Utilisateur à bannir</label>
@@ -536,8 +627,23 @@ def page_admin():
                             <button class="btn btn-warning btn-lg w-100" type="submit"><i class="bi bi-slash-circle"></i> Bannir</button>
                         </div>
                     </div>
-                    <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
                 </form>
+                
+                <!-- Delete messages form -->
+                <div class="border-top pt-4">
+                    <h5 class="brand-title mb-3">🗑️ Gestion des messages</h5>
+                    <div class="alert alert-danger mb-3">
+                        <i class="bi bi-exclamation-triangle"></i> Attention: Cette action est irréversible
+                    </div>
+                    <form method="POST" action="/delete_all_messages">
+                        <button class="btn btn-danger btn-lg w-100" type="submit" 
+                                onclick="return confirm('Êtes-vous SÛR de vouloir supprimer TOUS les messages ? Cette action est irréversible.')">
+                            <i class="bi bi-trash"></i> Supprimer tous les messages ({len(messages)} messages)
+                        </button>
+                    </form>
+                </div>
+                
+                <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
             </div>
         </div>
     </div>
@@ -590,6 +696,23 @@ class SimpleChatServer(BaseHTTPRequestHandler):
                 self.respond(page_admin())
             else:
                 self.redirect("/login")
+        elif path == "/confirm_delete":
+            if username == ADMIN_USER:
+                self.respond(page_template("Confirmation", f"""
+                    <div class="text-center">
+                        <div class="display-6">⚠️</div>
+                        <h3 class="text-warning mt-2">Confirmer la suppression</h3>
+                        <p>Êtes-vous sûr de vouloir supprimer les {len(messages)} messages ?</p>
+                        <form method="POST" action="/delete_all_messages">
+                            <button class="btn btn-danger btn-lg me-2" type="submit">
+                                <i class="bi bi-trash"></i> Oui, supprimer tout
+                            </button>
+                            <a href="/admin" class="btn btn-secondary btn-lg">Annuler</a>
+                        </form>
+                    </div>
+                """))
+            else:
+                self.redirect("/login")
         elif path == "/messages":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -609,6 +732,14 @@ class SimpleChatServer(BaseHTTPRequestHandler):
                 "uploaded_at": f.get("uploaded_at")
             } for f in files_meta]
             self.wfile.write(json.dumps(out).encode())
+        elif path == "/online_users":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            # Return active sessions (users online)
+            active_users = list(sessions.values())
+            online_users = list(set(active_users))  # Remove duplicates
+            self.wfile.write(json.dumps(online_users).encode())
         elif path == "/download":
             fid = query.get("fid", [None])[0]
             meta = next((f for f in files_meta if f.get("id") == fid), None)
@@ -692,6 +823,10 @@ class SimpleChatServer(BaseHTTPRequestHandler):
             user, minutes = params.get("username", [""])[0], int(params.get("minutes", ["0"])[0])
             if user in users:
                 banned_users[user] = time.time() + minutes * 60
+            self.redirect("/admin")
+        elif path == "/delete_all_messages" and username == ADMIN_USER:
+            messages.clear()
+            save_json(MESSAGES_FILE, messages)
             self.redirect("/admin")
         elif path == "/logout":
             cookie = self.headers.get("Cookie")
@@ -819,7 +954,7 @@ class SimpleChatServer(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     if not should_server_run():
-        print("horraire du servueur(7h-22h). Shutting down.")
+        print("Server is outside operating hours (7h-22h). Shutting down.")
         exit(0)
     
     print(f"Server running at http://{HOST}:{PORT}/")
