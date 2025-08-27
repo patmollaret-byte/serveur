@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 import json, time, os, uuid, mimetypes
+import tempfile
 
 HOST = "0.0.0.0"
 PORT = PORT = int(os.environ.get("PORT", 8080))
