@@ -5,22 +5,11 @@ import json, time, os, uuid, mimetypes
 import datetime
 
 def should_server_run():
-    """Vérifie si le serveur doit tourner (entre 8h et 19h heure française)"""
-    try:
-        import pytz
-        utc_zone = pytz.utc
-        france_zone = pytz.timezone('Europe/Paris')
-        utc_now = datetime.datetime.now(utc_zone)
-        france_now = utc_now.astimezone(france_zone)
-        current_hour = france_now.hour
-        return 7 <= current_hour < 22
-    except:
-        # Fallback simple si pytz n'est pas disponible
-        now = datetime.datetime.utcnow()
-        is_summer_time = (3 <= now.month <= 10)
-        hour_offset = 2 if is_summer_time else 1
-        french_hour = (now.hour + hour_offset) % 24
-        return 7 <= french_hour < 22
+    """Vérifie si le serveur doit tourner (entre 8h et 19h)"""
+    now = datetime.datetime.now()
+    current_hour = now.hour
+    return 7 <= current_hour < 20
+
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8080))
 
@@ -510,7 +499,7 @@ def page_discussion(username):
     """)
 
 def page_admin():
-    return page_template("Admin", f"""
+    return page_template("Admin", """
     <div class="row justify-content-center">
         <div class="col-12 col-lg-8">
             <div class="glass-card p-4 p-md-5">
@@ -523,10 +512,7 @@ def page_admin():
                         <button class="btn btn-outline-light"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
                     </form>
                 </div>
-                
-                <!-- Ban user form -->
-                <form method="POST" action="/ban" class="mt-2 mb-4">
-                    <h5 class="brand-title mb-3">👤 Gestion des utilisateurs</h5>
+                <form method="POST" action="/ban" class="mt-2">
                     <div class="row g-3 align-items-end">
                         <div class="col-12 col-md-6">
                             <label class="form-label">Utilisateur à bannir</label>
@@ -540,23 +526,8 @@ def page_admin():
                             <button class="btn btn-warning btn-lg w-100" type="submit"><i class="bi bi-slash-circle"></i> Bannir</button>
                         </div>
                     </div>
+                    <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
                 </form>
-                
-                <!-- Delete messages form -->
-                <div class="border-top pt-4">
-                    <h5 class="brand-title mb-3">🗑️ Gestion des messages</h5>
-                    <div class="alert alert-danger mb-3">
-                        <i class="bi bi-exclamation-triangle"></i> Attention: Cette action est irréversible
-                    </div>
-                    <form method="POST" action="/delete_all_messages">
-                        <button class="btn btn-danger btn-lg w-100" type="submit" 
-                                onclick="return confirm('Êtes-vous SÛR de vouloir supprimer TOUS les messages ? Cette action est irréversible.')">
-                            <i class="bi bi-trash"></i> Supprimer tous les messages ({len(messages)} messages)
-                        </button>
-                    </form>
-                </div>
-                
-                <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
             </div>
         </div>
     </div>
@@ -584,31 +555,88 @@ def make_session(username):
 
 # --- Serveur principal ---
 class SimpleChatServer(BaseHTTPRequestHandler):
-           elif path == "/admin":
+    def do_GET(self):
+        username = is_authenticated(self.headers)
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+
+        if path == "/":
+            self.respond(page_login())
+        elif path == "/login":
+            self.respond(page_login())
+        elif path == "/register":
+            self.respond(page_register())
+        elif path == "/discussion":
+            if username:
+                if username in banned_users and time.time() < banned_users[username]:
+                    self.respond(page_template("Banni", "<h3 class='text-center text-danger'>⛔ Vous êtes banni temporairement.</h3>"))
+                else:
+                    self.respond(page_discussion(username))
+            else:
+                self.redirect("/login")
+        elif path == "/admin":
             if username == ADMIN_USER:
                 self.respond(page_admin())
             else:
                 self.redirect("/login")
-        
-        # ⭐ AJOUTER ICI - Confirmation de suppression (optionnel)
-        elif path == "/confirm_delete":
-            if username == ADMIN_USER:
-                self.respond(page_template("Confirmation", f"""
-                    <div class="text-center">
-                        <div class="display-6">⚠️</div>
-                        <h3 class="text-warning mt-2">Confirmer la suppression</h3>
-                        <p>Êtes-vous sûr de vouloir supprimer les {len(messages)} messages ?</p>
-                        <form method="POST" action="/delete_all_messages">
-                            <button class="btn btn-danger btn-lg me-2" type="submit">
-                                <i class="bi bi-trash"></i> Oui, supprimer tout
-                            </button>
-                            <a href="/admin" class="btn btn-secondary btn-lg">Annuler</a>
-                        </form>
-                    </div>
-                """))
-            else:
-                self.redirect("/login")
-        # ⭐ FIN de l'ajout
+        elif path == "/messages":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            # Return all messages (persisted)
+            self.wfile.write(json.dumps(messages).encode())
+        elif path == "/files":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            # Expose only safe metadata
+            out = [{
+                "id": f.get("id"),
+                "owner": f.get("owner"),
+                "filename": f.get("filename"),
+                "size": f.get("size", 0),
+                "uploaded_at": f.get("uploaded_at")
+            } for f in files_meta]
+            self.wfile.write(json.dumps(out).encode())
+        elif path == "/download":
+            fid = query.get("fid", [None])[0]
+            meta = next((f for f in files_meta if f.get("id") == fid), None)
+            if not meta or not os.path.isfile(meta.get("disk_path", "")):
+                self.send_error(404, "File not found")
+                return
+            self.send_response(200)
+            mime, _ = mimetypes.guess_type(meta["filename"]) or ("application/octet-stream", None)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Disposition", f"attachment; filename=\"{meta['filename']}\"")
+            self.end_headers()
+            with open(meta["disk_path"], "rb") as f:
+                self.wfile.write(f.read())
+        elif path == "/export":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Disposition", "attachment; filename=messages.json")
+            self.end_headers()
+            self.wfile.write(json.dumps(messages).encode())
+        elif path == "/logout":
+            cookie = self.headers.get("Cookie")
+            if cookie and "session=" in cookie:
+                token = None
+                for part in cookie.split(";"):
+                    part = part.strip()
+                    if part.startswith("session="):
+                        token = part.split("session=")[1]
+                        break
+                if token:
+                    sessions.pop(token, None)
+                    save_json(SESSIONS_FILE, sessions)
+            self.send_response(302)
+            self.send_header("Set-Cookie", "session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
+            self.send_header("Location", "/login")
+            self.end_headers()
+        else:
+            self.send_error(404, "Not found")
+
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -781,7 +809,7 @@ class SimpleChatServer(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     if not should_server_run():
-        print("Server is outside operating hours (7h-20h). Shutting down.")
+        print("Server is outside operating hours (8h-19h). Shutting down.")
         exit(0)
     
     print(f"Server running at http://{HOST}:{PORT}/")
