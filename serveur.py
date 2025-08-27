@@ -1,17 +1,15 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
-import json, time, os, uuid, mimetypes
+import json, time, os, uuid, mimetypes, datetime
 
-import datetime
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", 8080))
 
 def should_server_run():
     """Vérifie si le serveur doit tourner (entre 8h et 19h)"""
     now = datetime.datetime.now()
     current_hour = now.hour
-    return 7 <= current_hour < 20
-
-HOST = "0.0.0.0"
-PORT = int(os.environ.get("PORT", 8080))
+    return 8 <= current_hour < 19
 
 # Data files and directories
 DATA_DIR = "."
@@ -499,7 +497,7 @@ def page_discussion(username):
     """)
 
 def page_admin():
-    return page_template("Admin", """
+    return page_template("Admin", f"""
     <div class="row justify-content-center">
         <div class="col-12 col-lg-8">
             <div class="glass-card p-4 p-md-5">
@@ -512,7 +510,10 @@ def page_admin():
                         <button class="btn btn-outline-light"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
                     </form>
                 </div>
-                <form method="POST" action="/ban" class="mt-2">
+                
+                <!-- Ban user form -->
+                <form method="POST" action="/ban" class="mt-2 mb-4">
+                    <h5 class="brand-title mb-3">👤 Gestion des utilisateurs</h5>
                     <div class="row g-3 align-items-end">
                         <div class="col-12 col-md-6">
                             <label class="form-label">Utilisateur à bannir</label>
@@ -526,8 +527,23 @@ def page_admin():
                             <button class="btn btn-warning btn-lg w-100" type="submit"><i class="bi bi-slash-circle"></i> Bannir</button>
                         </div>
                     </div>
-                    <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
                 </form>
+                
+                <!-- Delete messages form -->
+                <div class="border-top pt-4">
+                    <h5 class="brand-title mb-3">🗑️ Gestion des messages</h5>
+                    <div class="alert alert-danger mb-3">
+                        <i class="bi bi-exclamation-triangle"></i> Attention: Cette action est irréversible
+                    </div>
+                    <form method="POST" action="/delete_all_messages">
+                        <button class="btn btn-danger btn-lg w-100" type="submit" 
+                                onclick="return confirm('Êtes-vous SÛR de vouloir supprimer TOUS les messages ? Cette action est irréversible.')">
+                            <i class="bi bi-trash"></i> Supprimer tous les messages ({len(messages)} messages)
+                        </button>
+                    </form>
+                </div>
+                
+                <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
             </div>
         </div>
     </div>
@@ -578,6 +594,23 @@ class SimpleChatServer(BaseHTTPRequestHandler):
         elif path == "/admin":
             if username == ADMIN_USER:
                 self.respond(page_admin())
+            else:
+                self.redirect("/login")
+        elif path == "/confirm_delete":
+            if username == ADMIN_USER:
+                self.respond(page_template("Confirmation", f"""
+                    <div class="text-center">
+                        <div class="display-6">⚠️</div>
+                        <h3 class="text-warning mt-2">Confirmer la suppression</h3>
+                        <p>Êtes-vous sûr de vouloir supprimer les {len(messages)} messages ?</p>
+                        <form method="POST" action="/delete_all_messages">
+                            <button class="btn btn-danger btn-lg me-2" type="submit">
+                                <i class="bi bi-trash"></i> Oui, supprimer tout
+                            </button>
+                            <a href="/admin" class="btn btn-secondary btn-lg">Annuler</a>
+                        </form>
+                    </div>
+                """))
             else:
                 self.redirect("/login")
         elif path == "/messages":
@@ -682,6 +715,10 @@ class SimpleChatServer(BaseHTTPRequestHandler):
             user, minutes = params.get("username", [""])[0], int(params.get("minutes", ["0"])[0])
             if user in users:
                 banned_users[user] = time.time() + minutes * 60
+            self.redirect("/admin")
+        elif path == "/delete_all_messages" and username == ADMIN_USER:
+            messages.clear()
+            save_json(MESSAGES_FILE, messages)
             self.redirect("/admin")
         elif path == "/logout":
             cookie = self.headers.get("Cookie")
