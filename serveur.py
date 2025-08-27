@@ -2,6 +2,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 import json, time, os, uuid, mimetypes
 
+import datetime
+
+def should_server_run():
+    """Vérifie si le serveur doit tourner (entre 8h et 19h)"""
+    now = datetime.datetime.now()
+    current_hour = now.hour
+    return 8 <= current_hour < 19
+
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8080))
 
@@ -800,6 +808,16 @@ class SimpleChatServer(BaseHTTPRequestHandler):
         self.end_headers()
 
 if __name__ == "__main__":
+    if not should_server_run():
+        print("Server is outside operating hours (8h-19h). Shutting down.")
+        exit(0)
+    
     print(f"Server running at http://{HOST}:{PORT}/")
     server = HTTPServer((HOST, PORT), SimpleChatServer)
-    server.serve_forever()
+    
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("Server stopped by user")
+    except Exception as e:
+        print(f"Server error: {e}")
