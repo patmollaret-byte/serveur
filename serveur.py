@@ -5,10 +5,20 @@ import json, time, os, uuid, mimetypes
 import datetime
 
 def should_server_run():
-    """Vérifie si le serveur doit tourner (entre 8h et 19h)"""
-    now = datetime.datetime.now()
-    current_hour = now.hour
-    return 7 <= current_hour < 22
+    """Vérifie si le serveur doit tourner (entre 7h et 20h heure française)"""
+    now = datetime.datetime.utcnow()
+    
+    # Ajustement pour la France :
+    # - Heure d'été (mars à octobre) : UTC+2 → ajouter 2 heures
+    # - Heure d'hiver (octobre à mars) : UTC+1 → ajouter 1 heure
+    
+    # Déterminer si on est en heure d'été (simplifié)
+    is_summer_time = (3 <= now.month <= 10)  # Mars à octobre
+    
+    hour_offset = 2 if is_summer_time else 1
+    french_hour = (now.hour + hour_offset) % 24
+    
+    return 7 <= french_hour < 20  # De 7h à 19h59 heure française
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8080))
