@@ -701,19 +701,81 @@ class SimpleChatServer(BaseHTTPRequestHandler):
             self.send_header("Location", "/login")
             self.end_headers()
         elif path == "/upload" and username:
-            ctype = self.headers.get('Content-Type')
-            if not ctype or 'multipart/form-data' not in ctype:
-                self.send_error(400, "Bad Request")
-                return
-            env = {
-                'REQUEST_METHOD': 'POST',
-                'CONTENT_TYPE': ctype,
-            }
-            fs = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ=env)
-            fileitem = fs['file'] if 'file' in fs else None
-            if not fileitem or not getattr(fileitem, 'filename', ''):
-                self.send_error(400, "No file")
-                return
+    ctype = self.headers.get('Content-Type')
+    if not ctype or 'multipart/form-data' not in ctype:
+        self.send_error(400, "Bad Request")
+        return
+    
+    try:
+        # Lire la longueur du contenu
+        content_length = int(self.headers.get('Content-Length', 0))
+        if content_length == 0:
+            self.send_error(400, "No content")
+            return
+        
+        # Lire toutes les données
+        data = self.rfile.read(content_length)
+        
+        # Extraire le nom du fichier (méthode simplifiée)
+        lines = data.split(b'\r\n')
+        filename = None
+        
+        # Chercher la ligne avec le filename
+        for line in lines:
+            if b'filename=' in line:
+                # Extraire le nom de fichier
+                filename_part = line.split(b'filename="')[1]
+                filename = filename_part.split(b'"')[0].decode()
+                break
+        
+        if not filename:
+            self.send_error(400, "No filename found")
+            return
+        
+        # Trouver le début des données du fichier
+        file_data_start = None
+        for i, line in enumerate(lines):
+            if line == b'' and i + 1 < len(lines):
+                file_data_start = i + 1
+                break
+        
+        if file_data_start is None:
+            self.send_error(400, "No file data found")
+            return
+        
+        # Extraire les données du fichier (tout jusqu'à l'avant-dernière ligne)
+        file_data = b'\r\n'.join(lines[file_data_start:-2])
+        
+        # Continuer avec votre code existant pour sauvegarder le fichier
+        original_name = os.path.basename(filename)
+        fid = uuid.uuid4().hex
+        disk_name = f"{fid}__{original_name}"
+        disk_path = os.path.join(UPLOAD_DIR, disk_name)
+        
+        # Créer le dossier uploads s'il n'existe pas
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        
+        with open(disk_path, 'wb') as out:
+            out.write(file_data)
+        
+        # Le reste de votre code original continue ici...
+        size = os.path.getsize(disk_path)
+        files_meta.append({
+            "id": fid,
+            "owner": username,
+            "filename": original_name,
+            "disk_path": disk_path,
+            "size": size,
+            "uploaded_at": time.time(),
+        })
+        save_json(FILES_META_FILE, files_meta)
+        self.send_response(200)
+        self.end_headers()
+        
+    except Exception as e:
+        print(f"Upload error: {e}")
+        self.send_error(500, "Internal Server Error")
+        return
             original_name = os.path.basename(fileitem.filename)
             fid = uuid.uuid4().hex
             disk_name = f"{fid}__{original_name}"
