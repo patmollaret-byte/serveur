@@ -510,7 +510,7 @@ def page_discussion(username):
     """)
 
 def page_admin():
-    return page_template("Admin", """
+    return page_template("Admin", f"""
     <div class="row justify-content-center">
         <div class="col-12 col-lg-8">
             <div class="glass-card p-4 p-md-5">
@@ -523,7 +523,10 @@ def page_admin():
                         <button class="btn btn-outline-light"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
                     </form>
                 </div>
-                <form method="POST" action="/ban" class="mt-2">
+                
+                <!-- Ban user form -->
+                <form method="POST" action="/ban" class="mt-2 mb-4">
+                    <h5 class="brand-title mb-3">👤 Gestion des utilisateurs</h5>
                     <div class="row g-3 align-items-end">
                         <div class="col-12 col-md-6">
                             <label class="form-label">Utilisateur à bannir</label>
@@ -537,8 +540,23 @@ def page_admin():
                             <button class="btn btn-warning btn-lg w-100" type="submit"><i class="bi bi-slash-circle"></i> Bannir</button>
                         </div>
                     </div>
-                    <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
                 </form>
+                
+                <!-- Delete messages form -->
+                <div class="border-top pt-4">
+                    <h5 class="brand-title mb-3">🗑️ Gestion des messages</h5>
+                    <div class="alert alert-danger mb-3">
+                        <i class="bi bi-exclamation-triangle"></i> Attention: Cette action est irréversible
+                    </div>
+                    <form method="POST" action="/delete_all_messages">
+                        <button class="btn btn-danger btn-lg w-100" type="submit" 
+                                onclick="return confirm('Êtes-vous SÛR de vouloir supprimer TOUS les messages ? Cette action est irréversible.')">
+                            <i class="bi bi-trash"></i> Supprimer tous les messages ({len(messages)} messages)
+                        </button>
+                    </form>
+                </div>
+                
+                <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
             </div>
         </div>
     </div>
