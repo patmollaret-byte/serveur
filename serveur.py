@@ -2,8 +2,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 import json, time, os, uuid, mimetypes, cgi
 
-HOST = "192.168.1.21"
-PORT = 8080
+HOST = "0.0.0.0"
+PORT = PORT = int(os.environ.get("PORT", 8080))
 
 # Data files and directories
 DATA_DIR = "."
