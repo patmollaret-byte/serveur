@@ -701,7 +701,7 @@ class SimpleChatServer(BaseHTTPRequestHandler):
             self.send_header("Location", "/login")
             self.end_headers()
         elif path == "/upload" and username:
-    ctype = self.headers.get('Content-Type')
+            ctype = self.headers.get('Content-Type')
     if not ctype or 'multipart/form-data' not in ctype:
         self.send_error(400, "Bad Request")
         return
