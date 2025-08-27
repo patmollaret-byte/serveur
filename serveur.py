@@ -8,7 +8,7 @@ def should_server_run():
     """Vérifie si le serveur doit tourner (entre 8h et 19h)"""
     now = datetime.datetime.now()
     current_hour = now.hour
-    return 8 <= current_hour < 19
+    return 7 <= current_hour < 20
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8080))
