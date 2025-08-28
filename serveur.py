@@ -21,7 +21,7 @@ FILES_META_FILE = os.path.join(DATA_DIR, "files.json")
 
 # In-memory stores
 users = {}          # {username: password}
-sessions = {}       # {session_token: username}
+sessions = {}       # {session_token: {"username": username, "last_activity": timestamp}}}
 messages = []       # [{user, text, timestamp}]
 files_meta = []     # [{id, owner, filename, disk_path, size, uploaded_at}]
 banned_users = {}   # {username: ban_expiration_timestamp}
@@ -117,8 +117,24 @@ except Exception as e:
     print("Users migration failed:", e)
 
 # Load on startup
+# Load on startup
 users = load_users_file(USERS_FILE)
-sessions = load_json(SESSIONS_FILE, {})
+sessions_data = load_json(SESSIONS_FILE, {})
+
+# Convertir les anciennes sessions vers le nouveau format
+sessions = {}
+for token, value in sessions_data.items():
+    if isinstance(value, dict) and "username" in value:
+        sessions[token] = value
+    else:
+        # Ancien format: {token: username}
+        sessions[token] = {
+            "username": value,
+            "last_activity": time.time(),
+            "created_at": time.time() - 3600  # Il y a 1 heure
+        }
+
+save_json(SESSIONS_FILE, sessions)  # Sauvegarder le nouveau format
 messages = load_json(MESSAGES_FILE, [])
 files_meta = load_json(FILES_META_FILE, [])
 
@@ -312,6 +328,20 @@ def page_login(error_message=None):
         </div>
     </div>
     """)
+def cleanup_expired_sessions():
+    #"""Supprime les sessions inactives depuis plus de 30 minutes"""
+    current_time = time.time()
+    expired_tokens = []
+    
+    for token, session_data in sessions.items():
+        if current_time - session_data["last_activity"] > 1800:  # 30 minutes
+            expired_tokens.append(token)
+    
+    for token in expired_tokens:
+        sessions.pop(token, None)
+    
+    if expired_tokens:
+        save_json(SESSIONS_FILE, sessions)
 
 def page_register():
     return page_template("Inscription", """
@@ -659,13 +689,22 @@ def is_authenticated(headers):
             if part.startswith("session="):
                 token = part.split("session=")[1]
                 break
-        if token:
-            return sessions.get(token)
+        
+        if token and token in sessions:
+            # Mettre à jour le dernier accès
+            sessions[token]["last_activity"] = time.time()
+            save_json(SESSIONS_FILE, sessions)
+            return sessions[token]["username"]
+    
     return None
 
 def make_session(username):
     token = uuid.uuid4().hex
-    sessions[token] = username
+    sessions[token] = {
+        "username": username,
+        "last_activity": time.time(),
+        "created_at": time.time()
+    }
     save_json(SESSIONS_FILE, sessions)
     return token
 
@@ -736,9 +775,20 @@ class SimpleChatServer(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            # Return active sessions (users online)
-            active_users = list(sessions.values())
-            online_users = list(set(active_users))  # Remove duplicates
+            
+            # Nettoyer les sessions expirées
+            cleanup_expired_sessions()
+            
+            # Retourner seulement les utilisateurs actifs (dernières 5 minutes)
+            current_time = time.time()
+            online_users = []
+            
+            for session_data in sessions.values():
+                if current_time - session_data["last_activity"] < 300:  # 5 minutes
+                    online_users.append(session_data["username"])
+            
+            # Supprimer les doublons
+            online_users = list(set(online_users))
             self.wfile.write(json.dumps(online_users).encode())
         elif path == "/download":
             fid = query.get("fid", [None])[0]
@@ -951,6 +1001,8 @@ class SimpleChatServer(BaseHTTPRequestHandler):
         self.send_response(302)
         self.send_header("Location", url)
         self.end_headers()
+    
+    
 
 if __name__ == "__main__":
     if not should_server_run():
