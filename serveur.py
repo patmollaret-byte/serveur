@@ -9,7 +9,7 @@ def should_server_run():
     """Vérifie si le serveur doit tourner (entre 8h et 19h)"""
     now = datetime.datetime.now()
     current_hour = now.hour
-    return 8 <= current_hour < 19
+    return 7 <= current_hour < 22
 
 # Data files and directories
 DATA_DIR = "."
