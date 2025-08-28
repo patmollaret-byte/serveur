@@ -1,26 +1,15 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
-import json, time, os, uuid, mimetypes
-import datetime
-
-def should_server_run():
-    """Vérifie si le serveur doit tourner (entre 7h et 20h heure française)"""
-    now = datetime.datetime.utcnow()
-    
-    # Ajustement pour la France :
-    # - Heure d'été (mars à octobre) : UTC+2 → ajouter 2 heures
-    # - Heure d'hiver (octobre à mars) : UTC+1 → ajouter 1 heure
-    
-    # Déterminer si on est en heure d'été (simplifié)
-    is_summer_time = (3 <= now.month <= 10)  # Mars à octobre
-    
-    hour_offset = 2 if is_summer_time else 1
-    french_hour = (now.hour + hour_offset) % 24
-    
-    return 7 <= french_hour < 20  # De 7h à 19h59 heure française
+import json, time, os, uuid, mimetypes, datetime
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 8080))
+
+def should_server_run():
+    """Vérifie si le serveur doit tourner (entre 7h et 22h)"""
+    now = datetime.datetime.now()
+    current_hour = now.hour
+    return 7 <= current_hour < 22  # De 7h à 21h59
 
 # Data files and directories
 DATA_DIR = "."
@@ -32,7 +21,7 @@ FILES_META_FILE = os.path.join(DATA_DIR, "files.json")
 
 # In-memory stores
 users = {}          # {username: password}
-sessions = {}       # {session_token: username}
+sessions = {}       # {session_token: {"username": username, "last_activity": timestamp}}}
 messages = []       # [{user, text, timestamp}]
 files_meta = []     # [{id, owner, filename, disk_path, size, uploaded_at}]
 banned_users = {}   # {username: ban_expiration_timestamp}
@@ -128,8 +117,24 @@ except Exception as e:
     print("Users migration failed:", e)
 
 # Load on startup
+# Load on startup
 users = load_users_file(USERS_FILE)
-sessions = load_json(SESSIONS_FILE, {})
+sessions_data = load_json(SESSIONS_FILE, {})
+
+# Convertir les anciennes sessions vers le nouveau format
+sessions = {}
+for token, value in sessions_data.items():
+    if isinstance(value, dict) and "username" in value:
+        sessions[token] = value
+    else:
+        # Ancien format: {token: username}
+        sessions[token] = {
+            "username": value,
+            "last_activity": time.time(),
+            "created_at": time.time() - 3600  # Il y a 1 heure
+        }
+
+save_json(SESSIONS_FILE, sessions)  # Sauvegarder le nouveau format
 messages = load_json(MESSAGES_FILE, [])
 files_meta = load_json(FILES_META_FILE, [])
 
@@ -249,12 +254,38 @@ def page_template(title, body):
                 margin-bottom: 8px;
             }}
             .file-name {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-            
-            /* File link styling */
-            .file-link {{
-                color: #8cb4ff;
-                text-decoration: underline;
-                font-weight: 500;
+
+            /* Online users list */
+            .online-users-list {{
+                max-height: 200px;
+                overflow-y: auto;
+            }}
+            .user-online-item {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 12px;
+                margin-bottom: 6px;
+                border-radius: 10px;
+                background: rgba(255,255,255,0.06);
+                border: 1px solid var(--border);
+            }}
+            .user-avatar {{
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, var(--primary), var(--primary-2));
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 600;
+            }}
+            .user-status {{
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: #00ff00;
+                margin-left: auto;
             }}
         </style>
     </head>
@@ -297,6 +328,20 @@ def page_login(error_message=None):
         </div>
     </div>
     """)
+def cleanup_expired_sessions():
+    #"""Supprime les sessions inactives depuis plus de 30 minutes"""
+    current_time = time.time()
+    expired_tokens = []
+    
+    for token, session_data in sessions.items():
+        if current_time - session_data["last_activity"] > 1800:  # 30 minutes
+            expired_tokens.append(token)
+    
+    for token in expired_tokens:
+        sessions.pop(token, None)
+    
+    if expired_tokens:
+        save_json(SESSIONS_FILE, sessions)
 
 def page_register():
     return page_template("Inscription", """
@@ -334,7 +379,7 @@ def page_discussion(username):
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div class="d-flex align-items-center gap-2">
                     <span class="fs-3">💬</span>
-                    <h3 class="brand-title mb-0">Discussion Générale</h3>
+                    <h3 class="brand-title mb-0">Discussion</h3>
                     <span class="badge bg-light text-dark ms-2"><i class="bi bi-person-circle"></i> {username}</span>
                 </div>
                 <div class="d-flex gap-2">
@@ -358,12 +403,29 @@ def page_discussion(username):
         </div>
         <div class="col-12 col-lg-4">
             <div class="glass-card p-3 p-md-4">
-                <h5 class="brand-title mb-3">📁 Partage de fichiers</h5>
+                <h5 class="brand-title mb-3">📁 Fichiers partagés</h5>
                 <div class="mb-3">
-                    <input type="file" id="file-input" class="form-control">
-                    <button id="upload-btn" class="btn btn-primary w-100 mt-2"><i class="bi bi-upload"></i> Uploader</button>
+                    <form id="upload-form" method="POST" enctype="multipart/form-data">
+                        <input type="file" id="file-input" name="file" class="form-control">
+                        <button type="submit" id="upload-btn" class="btn btn-primary w-100 mt-2">
+                            <i class="bi bi-upload"></i> Uploader
+                        </button>
+                    </form>
                 </div>
-                <p class="small muted">Le fichier sera partagé sous forme de lien dans le chat</p>
+                <div id="files-list"></div>
+                
+                <!-- Liste des utilisateurs en ligne -->
+                <div class="border-top pt-4 mt-4">
+                    <h5 class="brand-title mb-3">👥 Utilisateurs en ligne</h5>
+                    <div id="online-users" class="online-users-list">
+                        <div class="text-center muted">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Chargement...</span>
+                            </div>
+                            Chargement...
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -389,26 +451,11 @@ def page_discussion(username):
         const html = msgs.map(m => {{
             const mine = m.user === CURRENT_USER;
             const admin = m.user === ADMIN;
-            
-            // Check if message contains a file link
-            let messageContent = escapeHtml(m.text);
-            if (m.text && m.text.includes('[FILE:')) {{
-                // Parse file link format: [FILE:filename|fileid]
-                const fileMatch = m.text.match(/\\[FILE:(.*?)\\|(.*?)\\]/);
-                if (fileMatch) {{
-                    const filename = fileMatch[1];
-                    const fileid = fileMatch[2];
-                    messageContent = `<a href="/download?fid=${{fileid}}" class="file-link" target="_blank">
-                        <i class="bi bi-file-earmark-arrow-down"></i> Télécharger "${{escapeHtml(filename)}}"
-                    </a>`;
-                }}
-            }}
-            
             return `
             <li class="d-flex ${{mine ? 'justify-content-end' : 'justify-content-start'}}">
                 <div class="chat-bubble ${{mine ? 'mine' : 'other'}}">
                     <div class="small muted mb-1">${{admin ? '👑 ' : ''}}${{escapeHtml(m.user)}}</div>
-                    <div>${{messageContent}}</div>
+                    <div>${{escapeHtml(m.text)}}</div>
                     <div class="small muted mt-1">${{formatTime(m.timestamp)}}</div>
                 </div>
             </li>`;
@@ -476,35 +523,93 @@ def page_discussion(username):
         }}
     }});
 
-    // File upload
+    // Files
+    const uploadForm = document.getElementById('upload-form');
     const fileInput = document.getElementById('file-input');
     const uploadBtn = document.getElementById('upload-btn');
+    const filesList = document.getElementById('files-list');
 
-    uploadBtn.addEventListener('click', async () => {{
+    // Upload functionality - FIXED
+    uploadForm.addEventListener('submit', async (e) => {{
+        e.preventDefault();
         if (!fileInput.files.length) return;
         
         uploadBtn.disabled = true;
-        uploadBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Envoi en cours...';
+        uploadBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Upload en cours...';
         
         try {{
-            const fd = new FormData();
-            fd.append('file', fileInput.files[0]);
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
             
-            const response = await fetch('/upload', {{ method:'POST', body: fd }});
+            const response = await fetch('/upload', {{
+                method: 'POST',
+                body: formData
+            }});
+            
             if (response.ok) {{
                 fileInput.value = '';
-                loadMessages(); // Refresh messages to show the file link
+                loadFiles();
             }} else {{
-                alert('Erreur lors de l\'upload du fichier');
+                alert('Erreur lors de l\\'upload');
             }}
-        }} catch(e) {{
-            console.error(e);
-            alert('Erreur lors de l\'upload du fichier');
+        }} catch (error) {{
+            console.error('Upload error:', error);
+            alert('Erreur de connexion');
         }} finally {{
             uploadBtn.disabled = false;
             uploadBtn.innerHTML = '<i class="bi bi-upload"></i> Uploader';
         }}
     }});
+
+    async function loadFiles(){{
+        try {{
+            const res = await fetch('/files', {{ cache: 'no-store' }});
+            const files = await res.json();
+            filesList.innerHTML = files.map(f => `
+                <div class="file-item">
+                    <div class="file-name">
+                        <i class="bi bi-file-earmark"></i> ${{escapeHtml(f.filename)}}
+                        <div class="small muted">${{escapeHtml(f.owner)}} · ${{(f.size/1024).toFixed(1)}} Ko · ${{new Date(f.uploaded_at*1000).toLocaleString()}}</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a class="btn btn-sm btn-outline-light" href="/download?fid=${{encodeURIComponent(f.id)}}" title="Télécharger"><i class="bi bi-download"></i></a>
+                        ${{f.owner === CURRENT_USER ? `<button data-fid="${{f.id}}" class="btn btn-sm btn-outline-danger btn-del" title="Supprimer"><i class="bi bi-trash"></i></button>` : ''}}
+                    </div>
+                </div>
+            `).join('');
+            filesList.querySelectorAll('.btn-del').forEach(btn => {{
+                btn.addEventListener('click', async (e) => {{
+                    const fid = e.currentTarget.getAttribute('data-fid');
+                    await fetch('/delete_file', {{ method:'POST', headers:{{'Content-Type':'application/x-www-form-urlencoded'}}, body:`fid=${{encodeURIComponent(fid)}}` }});
+                    loadFiles();
+                }});
+            }});
+        }} catch(e) {{ console.error(e); }}
+    }}
+
+    // Online users functionality
+    async function loadOnlineUsers(){{
+        try {{
+            const res = await fetch('/online_users', {{ cache: 'no-store' }});
+            const users = await res.json();
+            
+            const onlineUsersList = document.getElementById('online-users');
+            if (users.length === 0) {{
+                onlineUsersList.innerHTML = '<div class="text-center muted">Aucun utilisateur en ligne</div>';
+                return;
+            }}
+            
+            onlineUsersList.innerHTML = users.map(user => `
+                <div class="user-online-item">
+                    <div class="user-avatar">${{user.charAt(0).toUpperCase()}}</div>
+                    <div>${{escapeHtml(user)}}${{user === ADMIN ? ' 👑' : ''}}</div>
+                    <div class="user-status"></div>
+                </div>
+            `).join('');
+        }} catch(e) {{ 
+            console.error('Failed to load online users:', e);
+        }}
+    }}
 
     // Render cached messages instantly if available
     try {{ 
@@ -513,13 +618,16 @@ def page_discussion(username):
     }} catch (e) {{}}
 
     setInterval(loadMessages, 1500);
+    setInterval(loadOnlineUsers, 3000);
     loadMessages();
     updateBtn();
+    loadFiles();
+    loadOnlineUsers();
     </script>
     """)
 
 def page_admin():
-    return page_template("Admin", """
+    return page_template("Admin", f"""
     <div class="row justify-content-center">
         <div class="col-12 col-lg-8">
             <div class="glass-card p-4 p-md-5">
@@ -532,7 +640,10 @@ def page_admin():
                         <button class="btn btn-outline-light"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
                     </form>
                 </div>
-                <form method="POST" action="/ban" class="mt-2">
+                
+                <!-- Ban user form -->
+                <form method="POST" action="/ban" class="mt-2 mb-4">
+                    <h5 class="brand-title mb-3">👤 Gestion des utilisateurs</h5>
                     <div class="row g-3 align-items-end">
                         <div class="col-12 col-md-6">
                             <label class="form-label">Utilisateur à bannir</label>
@@ -546,8 +657,23 @@ def page_admin():
                             <button class="btn btn-warning btn-lg w-100" type="submit"><i class="bi bi-slash-circle"></i> Bannir</button>
                         </div>
                     </div>
-                    <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
                 </form>
+                
+                <!-- Delete messages form -->
+                <div class="border-top pt-4">
+                    <h5 class="brand-title mb-3">🗑️ Gestion des messages</h5>
+                    <div class="alert alert-danger mb-3">
+                        <i class="bi bi-exclamation-triangle"></i> Attention: Cette action est irréversible
+                    </div>
+                    <form method="POST" action="/delete_all_messages">
+                        <button class="btn btn-danger btn-lg w-100" type="submit" 
+                                onclick="return confirm('Êtes-vous SÛR de vouloir supprimer TOUS les messages ? Cette action est irréversible.')">
+                            <i class="bi bi-trash"></i> Supprimer tous les messages ({len(messages)} messages)
+                        </button>
+                    </form>
+                </div>
+                
+                <p class="muted mt-3 mb-0">Astuce: un ban temporaire se lève automatiquement après la durée indiquée.</p>
             </div>
         </div>
     </div>
@@ -563,13 +689,22 @@ def is_authenticated(headers):
             if part.startswith("session="):
                 token = part.split("session=")[1]
                 break
-        if token:
-            return sessions.get(token)
+        
+        if token and token in sessions:
+            # Mettre à jour le dernier accès
+            sessions[token]["last_activity"] = time.time()
+            save_json(SESSIONS_FILE, sessions)
+            return sessions[token]["username"]
+    
     return None
 
 def make_session(username):
     token = uuid.uuid4().hex
-    sessions[token] = username
+    sessions[token] = {
+        "username": username,
+        "last_activity": time.time(),
+        "created_at": time.time()
+    }
     save_json(SESSIONS_FILE, sessions)
     return token
 
@@ -600,12 +735,61 @@ class SimpleChatServer(BaseHTTPRequestHandler):
                 self.respond(page_admin())
             else:
                 self.redirect("/login")
+        elif path == "/confirm_delete":
+            if username == ADMIN_USER:
+                self.respond(page_template("Confirmation", f"""
+                    <div class="text-center">
+                        <div class="display-6">⚠️</div>
+                        <h3 class="text-warning mt-2">Confirmer la suppression</h3>
+                        <p>Êtes-vous sûr de vouloir supprimer les {len(messages)} messages ?</p>
+                        <form method="POST" action="/delete_all_messages">
+                            <button class="btn btn-danger btn-lg me-2" type="submit">
+                                <i class="bi bi-trash"></i> Oui, supprimer tout
+                            </button>
+                            <a href="/admin" class="btn btn-secondary btn-lg">Annuler</a>
+                        </form>
+                    </div>
+                """))
+            else:
+                self.redirect("/login")
         elif path == "/messages":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             # Return all messages (persisted)
             self.wfile.write(json.dumps(messages).encode())
+        elif path == "/files":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            # Expose only safe metadata
+            out = [{
+                "id": f.get("id"),
+                "owner": f.get("owner"),
+                "filename": f.get("filename"),
+                "size": f.get("size", 0),
+                "uploaded_at": f.get("uploaded_at")
+            } for f in files_meta]
+            self.wfile.write(json.dumps(out).encode())
+        elif path == "/online_users":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            
+            # Nettoyer les sessions expirées
+            cleanup_expired_sessions()
+            
+            # Retourner seulement les utilisateurs actifs (dernières 5 minutes)
+            current_time = time.time()
+            online_users = []
+            
+            for session_data in sessions.values():
+                if current_time - session_data["last_activity"] < 300:  # 5 minutes
+                    online_users.append(session_data["username"])
+            
+            # Supprimer les doublons
+            online_users = list(set(online_users))
+            self.wfile.write(json.dumps(online_users).encode())
         elif path == "/download":
             fid = query.get("fid", [None])[0]
             meta = next((f for f in files_meta if f.get("id") == fid), None)
@@ -689,6 +873,10 @@ class SimpleChatServer(BaseHTTPRequestHandler):
             user, minutes = params.get("username", [""])[0], int(params.get("minutes", ["0"])[0])
             if user in users:
                 banned_users[user] = time.time() + minutes * 60
+            self.redirect("/admin")
+        elif path == "/delete_all_messages" and username == ADMIN_USER:
+            messages.clear()
+            save_json(MESSAGES_FILE, messages)
             self.redirect("/admin")
         elif path == "/logout":
             cookie = self.headers.get("Cookie")
@@ -774,22 +962,31 @@ class SimpleChatServer(BaseHTTPRequestHandler):
                     "uploaded_at": time.time(),
                 })
                 save_json(FILES_META_FILE, files_meta)
-                
-                # Ajouter un message avec le lien du fichier dans le chat
-                file_link = f"[FILE:{original_name}|{fid}]"
-                messages.append({
-                    "user": username, 
-                    "text": f"a partagé un fichier: {file_link}", 
-                    "timestamp": time.time()
-                })
-                save_json(MESSAGES_FILE, messages)
-                
                 self.send_response(200)
                 self.end_headers()
                 
             except Exception as e:
                 print(f"Upload error: {e}")
                 self.send_error(500, "Internal Server Error")
+        elif path == "/delete_file" and username:
+            fid = params.get("fid", [None])[0]
+            meta_idx = next((i for i, f in enumerate(files_meta) if f.get("id") == fid), None)
+            if meta_idx is None:
+                self.send_error(404, "Not found")
+                return
+            meta = files_meta[meta_idx]
+            if meta.get("owner") != username and username != ADMIN_USER:
+                self.send_error(403, "Forbidden")
+                return
+            try:
+                if os.path.isfile(meta.get("disk_path", "")):
+                    os.remove(meta["disk_path"])
+            except Exception:
+                pass
+            files_meta.pop(meta_idx)
+            save_json(FILES_META_FILE, files_meta)
+            self.send_response(200)
+            self.end_headers()
         else:
             self.send_error(404, "Not found")
 
@@ -804,10 +1001,12 @@ class SimpleChatServer(BaseHTTPRequestHandler):
         self.send_response(302)
         self.send_header("Location", url)
         self.end_headers()
+    
+    
 
 if __name__ == "__main__":
     if not should_server_run():
-        print("Horaire du serveur (7h-20h). Arrêt du serveur.")
+        print("Server is outside operating hours (7h-22h). Shutting down.")
         exit(0)
     
     print(f"Server running at http://{HOST}:{PORT}/")
