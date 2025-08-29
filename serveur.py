@@ -225,7 +225,7 @@ class WebHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
             self.send_response(200)
-            self.send_header('Content-type', 'text/html')
+            self.send_header('Content-type', 'text/html; charset=utf-8')
             self.end_headers()
             
             local_time = server.get_local_time()
@@ -507,7 +507,7 @@ class WebHandler(BaseHTTPRequestHandler):
                         const countdownElement = document.querySelector('.countdown p');
                         if (countdownElement) {{
                             const text = countdownElement.textContent;
-                            const regex = /(\d+)h (\d+)m (\d+)s/;
+                            const regex = /(\\d+)h (\\d+)m (\\d+)s/;
                             const match = text.match(regex);
                             
                             if (match) {{
@@ -543,11 +543,11 @@ class WebHandler(BaseHTTPRequestHandler):
             </html>
             """
             
-            self.wfile.write(html.encode())
+            self.wfile.write(html.encode('utf-8'))
         else:
             self.send_response(404)
             self.end_headers()
-            self.wfile.write(b'Page non trouvée')
+            self.wfile.write('Page non trouvée'.encode('utf-8'))
 
 def start_web_server():
     """Démarre le serveur web HTTP sur le port 80/443"""
